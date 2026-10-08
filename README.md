@@ -1,61 +1,64 @@
 # Agent Usage Monitor
 
-Two local, read-only tools for watching what your coding agents are doing on
-this machine:
+Two small tools that keep an eye on what Codex, OpenCode, and Cline are doing
+on your Mac — how much of your limits is left, how many tokens you've burned,
+what it's costing, and what you were working on.
 
-- **`macos/`** — a macOS app ("Codex Usage") with per-agent tabs.
-- **`tui/`** — a zero-dependency terminal UI
-  ([`tui/agent-usage-monitor.mjs`](tui/agent-usage-monitor.mjs)).
+- **`macos/`** — the app. A little window with a tab per agent.
+- **`tui/`** — the terminal version. One file, no dependencies, just Node.
 
-Both show the same things for **Codex**, **OpenCode**, and **Cline**:
+They show the same things:
 
-- Subscription limit bars: percent left, a gauge, and a reset line with a live
-  countdown plus the reset clock time (`23:11` today, `Tue 23:11` within a
-  week, `Oct 16 at 19:28` beyond)
-- Today's and all-time token totals
-- Estimated cost, today and all time (pay-as-you-go list prices)
-- Recent threads and sessions
+- **Limits, in percent left.** Each one has a bar and a reset time like
+  `resets in 3h 12m · 23:11`. The clock keeps it short: `23:11` if it resets
+  today, `Tue 23:11` later in the week, and `Oct 16 at 19:28` after that.
+- **Tokens used today, and all time.**
+- **A rough cost** (today and all-time), estimated from published API prices.
+- **Recent threads and sessions**, so you can see what you were doing.
 
-Everything is read from local files (`~/.codex`, `~/.local/share/opencode`,
-`~/.cline`). The only network calls are the two subscription quota checks,
-which reuse the sign-ins the CLIs already store on disk; nothing else leaves
-the machine.
+Everything comes from files already on your Mac (`~/.codex`,
+`~/.local/share/opencode`, `~/.cline`). The only things that touch the
+network are the two limit checks for Cline and OpenCode, and those just
+reuse the logins those CLIs keep on disk. Nothing else goes anywhere.
 
-## The terminal UI
+## The terminal one
 
 ```bash
 node tui/agent-usage-monitor.mjs
 ```
 
-Keys: `1` / `2` / `3` switch agents, `Tab` cycles, `r` refreshes, `q` quits.
+Hit `1`, `2`, or `3` (or `Tab`) to switch agents, `r` to refresh, `q` to
+quit.
 
-## The macOS app
+## The app
 
-Build from `macos/` (requires macOS 26 or later):
+Grab `Agent Usage Monitor.app` from the latest release and drop it in
+Applications, or build it yourself from `macos/`:
 
 ```bash
 cd macos
-xcodegen generate   # only after changing project.yml
-open CodexUsageControl.xcodeproj
+xcodegen generate   # only if you changed project.yml
+open AgentUsageMonitor.xcodeproj
 ```
 
-Install: move `Codex Usage.app` to Applications and open it once, and leave
-it running to refresh every minute.
+Leave it open so the numbers stay fresh — it re-reads everything every
+minute. Needs macOS 26 or later.
 
-## Quota sign-ins
+## If the limit bars stop working
 
-- **Cline** — token read read-only from `~/.cline/data/settings/providers.json`;
-  if the session expires, run `cline auth`.
-- **OpenCode** — key read read-only from `~/.local/share/opencode/auth.json`;
-  if rejected, run `opencode auth login`.
+The Cline and OpenCode limits use the logins those CLIs already have,
+read-only. An expired session is the usual culprit:
 
-A tool's limits section stays hidden until it has a stored sign-in.
+- Cline: run `cline auth`
+- OpenCode: run `opencode auth login`
+
+No sign-in at all? The limits section just stays hidden.
 
 ## Layout
 
 ```
-macos/   Xcode project and macOS app
-tui/     terminal UI script
+macos/   the app (Xcode project)
+tui/     the terminal version
 ```
 
 ## License
