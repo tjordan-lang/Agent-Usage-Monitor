@@ -50,14 +50,24 @@ final class UsageStore: ObservableObject {
             self.error = error.localizedDescription
         }
         do {
-            let fresh = try await Task.detached(priority: .utility) { try UsageReader.readOpenCode() }.value
+            var fresh = try await Task.detached(priority: .utility) { try UsageReader.readOpenCode() }.value
+            // The local read replaces the whole struct; carry the slower
+            // quota checks forward so the limit bars survive between them.
+            fresh.fiveHour = openCode.fiveHour
+            fresh.weekly = openCode.weekly
+            fresh.monthly = openCode.monthly
+            fresh.limitsError = openCode.limitsError
             openCode = fresh
             openCodeError = nil
         } catch {
             openCodeError = error.localizedDescription
         }
         do {
-            let fresh = try await Task.detached(priority: .utility) { try UsageReader.readCline() }.value
+            var fresh = try await Task.detached(priority: .utility) { try UsageReader.readCline() }.value
+            fresh.fiveHour = cline.fiveHour
+            fresh.weekly = cline.weekly
+            fresh.monthly = cline.monthly
+            fresh.limitsError = cline.limitsError
             cline = fresh
             clineError = nil
         } catch {
@@ -353,6 +363,20 @@ private struct LimitRow: View {
         return .green
     }
 
+    /// Clock time for the parenthesized part of the reset line. The clock
+    /// time alone is enough while the reset is today; the weekday and then
+    /// the date are added as it gets further out, so the weekly and monthly
+    /// bars stay unambiguous.
+    private func resetClock(_ date: Date) -> String {
+        if Calendar.current.isDateInToday(date) {
+            return date.formatted(date: .omitted, time: .shortened)
+        }
+        if date.timeIntervalSinceNow < 7 * 24 * 60 * 60 {
+            return date.formatted(.dateTime.weekday(.abbreviated).hour().minute())
+        }
+        return date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             LabeledContent {
@@ -369,6 +393,7 @@ private struct LimitRow: View {
                     Image(systemName: "arrow.counterclockwise")
                     Text("Resets")
                     Text(reset, style: .relative)
+                    Text("(\(resetClock(reset)))")
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
