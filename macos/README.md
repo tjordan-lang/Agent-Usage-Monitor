@@ -12,9 +12,14 @@ countdown to the reset, and the reset's clock time.
 
 ## Install
 
-1. Move `Agent Usage Monitor.app` to Applications and open it once. If macOS
-   complains about a locally built app, Control-click it and choose **Open**.
+1. Download the macOS ZIP from the latest GitHub release, unzip it, and move
+   `Agent Usage Monitor.app` to Applications. The release app is Developer ID
+   signed and notarized by Apple. Open it once.
 2. Leave it running — it re-reads everything every minute.
+
+To add its Codex usage control, open Control Center, choose **Edit Controls**,
+and search for **Agent Usage Monitor**. This is a Control Center control;
+the app does not include a desktop widget.
 
 Needs macOS 26 or later.
 
