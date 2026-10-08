@@ -3,8 +3,7 @@
 Two local, read-only tools for watching what your coding agents are doing on
 this machine:
 
-- **`macos/`** — a macOS app ("Codex Usage") with per-agent tabs, plus a
-  Control Center widget.
+- **`macos/`** — a macOS app ("Codex Usage") with per-agent tabs.
 - **`tui/`** — a zero-dependency terminal UI
   ([`tui/agent-usage-monitor.mjs`](tui/agent-usage-monitor.mjs)).
 
@@ -40,9 +39,8 @@ xcodegen generate   # only after changing project.yml
 open CodexUsageControl.xcodeproj
 ```
 
-Install: move `Codex Usage.app` to Applications and open it once, then add the
-**Codex Usage** control in Control Center under **Edit Controls**. Leave the
-app running to refresh the shared snapshot every minute.
+Install: move `Codex Usage.app` to Applications and open it once, and leave
+it running to refresh every minute.
 
 ## Quota sign-ins
 
@@ -56,7 +54,7 @@ A tool's limits section stays hidden until it has a stored sign-in.
 ## Layout
 
 ```
-macos/   Xcode project, macOS app, and Control Center widget
+macos/   Xcode project and macOS app
 tui/     terminal UI script
 ```
 
