@@ -10,7 +10,7 @@ The OpenCode tab reads `~/.local/share/opencode/opencode.db`; the Codex tab read
 2. Open Control Center, choose **Edit Controls**, find **Codex Usage**, and add it.
 3. Leave the app running to refresh the shared snapshot every minute.
 
-The Control Center display updates when macOS reloads the control. Click it to open the menu bar app. Requires macOS 26 or later.
+The Control Center display updates when macOS reloads the control. Click it to open the app. Requires macOS 26 or later.
 
 ## Rebuild
 

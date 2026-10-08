@@ -3,8 +3,8 @@
 Two local, read-only tools for watching what your coding agents are doing on
 this machine:
 
-- **`macos/`** — a macOS menu bar app and Control Center widget ("Codex
-  Usage") with per-agent tabs.
+- **`macos/`** — a macOS app ("Codex Usage") with per-agent tabs, plus a
+  Control Center widget.
 - **`tui/`** — a zero-dependency terminal UI
   ([`tui/agent-usage-monitor.mjs`](tui/agent-usage-monitor.mjs)).
 
@@ -56,7 +56,7 @@ A tool's limits section stays hidden until it has a stored sign-in.
 ## Layout
 
 ```
-macos/   Xcode project, menu bar app, and widget
+macos/   Xcode project, macOS app, and Control Center widget
 tui/     terminal UI script
 ```
 
