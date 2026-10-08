@@ -46,7 +46,7 @@ enum UsageReader {
                 return OpenCodeSession(
                     id: String(columns[0]),
                     title: String(columns[1]).trimmingCharacters(in: .whitespaces),
-                    model: String(columns[2]),
+                    model: openCodeModel(String(columns[2])),
                     updatedAt: Date(timeIntervalSince1970: timestamp > 10_000_000_000 ? timestamp / 1000 : timestamp),
                     input: Int(columns[4]) ?? 0,
                     output: Int(columns[5]) ?? 0,
@@ -66,6 +66,87 @@ enum UsageReader {
             cost: Double(fields[6]) ?? 0,
             recentSessions: sessions
         )
+    }
+
+    private static func openCodeModel(_ value: String) -> String {
+        guard value.hasPrefix("{"), let data = value.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let id = object["id"] as? String, !id.isEmpty else { return value }
+        return id
+    }
+
+    static func readCline() throws -> ClineUsageData {
+        let root = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".cline/data/sessions")
+        let fm = FileManager.default
+        guard let folders = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isDirectoryKey]) else {
+            throw ReaderError.cline
+        }
+        var sessions: [ClineSession] = []
+        var input = 0
+        var output = 0
+        var cacheRead = 0
+        var cacheWrite = 0
+        for folder in folders {
+            guard (try? folder.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true,
+                  !folder.lastPathComponent.contains("__agent_"),
+                  let files = try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey]),
+                  let meta = files.first(where: { $0.lastPathComponent == "\(folder.lastPathComponent).json" })
+                      ?? files.first(where: { $0.pathExtension == "json" && !$0.lastPathComponent.hasSuffix(".messages.json") && !$0.lastPathComponent.hasSuffix(".compaction.json") }),
+                  let data = try? Data(contentsOf: meta),
+                  let record = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+            let metadata = record["metadata"] as? [String: Any] ?? [:]
+            // Prefer Cline's aggregate totals (session plus spawned subagents); fall back to session-only usage.
+            let usage = (metadata["aggregateUsage"] as? [String: Any]) ?? (metadata["usage"] as? [String: Any]) ?? [:]
+            let modified = (try? meta.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .now
+            let started = clineDate(record["started_at"], fallback: modified)
+            let sessionInput = usage["inputTokens"] as? Int ?? 0
+            let sessionOutput = usage["outputTokens"] as? Int ?? 0
+            let sessionCacheRead = usage["cacheReadTokens"] as? Int ?? 0
+            let sessionCacheWrite = usage["cacheWriteTokens"] as? Int ?? 0
+            let sessionModel = record["model"] as? String ?? ""
+            input += sessionInput
+            output += sessionOutput
+            cacheRead += sessionCacheRead
+            cacheWrite += sessionCacheWrite
+            sessions.append(ClineSession(
+                id: record["session_id"] as? String ?? folder.lastPathComponent,
+                title: clineTitle(metadata["title"]),
+                model: sessionModel,
+                startedAt: started,
+                input: sessionInput,
+                output: sessionOutput,
+                cacheRead: sessionCacheRead,
+                cacheWrite: sessionCacheWrite
+            ))
+        }
+        sessions.sort { $0.startedAt > $1.startedAt }
+        return ClineUsageData(
+            updatedAt: .now,
+            sessionCount: sessions.count,
+            input: input,
+            output: output,
+            cacheRead: cacheRead,
+            cacheWrite: cacheWrite,
+            recentSessions: Array(sessions.prefix(6))
+        )
+    }
+
+    private static func clineTitle(_ value: Any?) -> String {
+        (value as? String ?? "")
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\r", with: " ")
+            .replacingOccurrences(of: "\t", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func clineDate(_ value: Any?, fallback: Date) -> Date {
+        guard let string = value as? String else { return fallback }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: string) { return date }
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: string) ?? fallback
     }
 
     private static func scalar(_ sql: String, _ database: URL) throws -> String {
@@ -137,11 +218,12 @@ enum UsageReader {
     }
 
     private enum ReaderError: LocalizedError {
-        case database, openCode
+        case database, openCode, cline
         var errorDescription: String? {
             switch self {
             case .database: "Couldn’t read the local usage database."
             case .openCode: "Couldn’t read OpenCode’s local usage database."
+            case .cline: "Couldn’t read Cline’s local session data."
             }
         }
     }
@@ -157,8 +239,13 @@ struct OpenCodeUsageData {
     var cacheWrite: Int
     var cost: Double
     var recentSessions: [OpenCodeSession]
+    var fiveHour: UsageLimit? = nil
+    var weekly: UsageLimit? = nil
+    var monthly: UsageLimit? = nil
+    var limitsError: String? = nil
 
     var totalTokens: Int { input + output + reasoning + cacheRead + cacheWrite }
+    var hasLimits: Bool { fiveHour != nil || weekly != nil || monthly != nil }
     static let empty = OpenCodeUsageData(updatedAt: .now, sessionCount: 0, input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, cost: 0, recentSessions: [])
 }
 
@@ -174,4 +261,206 @@ struct OpenCodeSession: Identifiable {
     var cacheWrite: Int
 
     var totalTokens: Int { input + output + reasoning + cacheRead + cacheWrite }
+}
+
+struct ClineUsageData {
+    var updatedAt: Date
+    var sessionCount: Int
+    var input: Int
+    var output: Int
+    var cacheRead: Int
+    var cacheWrite: Int
+    var recentSessions: [ClineSession]
+    var fiveHour: UsageLimit? = nil
+    var weekly: UsageLimit? = nil
+    var monthly: UsageLimit? = nil
+    var limitsError: String? = nil
+
+    var totalTokens: Int { input + output }
+    var hasLimits: Bool { fiveHour != nil || weekly != nil || monthly != nil }
+    static let empty = ClineUsageData(updatedAt: .now, sessionCount: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, recentSessions: [])
+}
+
+struct ClineSession: Identifiable {
+    var id: String
+    var title: String
+    var model: String
+    var startedAt: Date
+    var input: Int
+    var output: Int
+    var cacheRead: Int
+    var cacheWrite: Int
+
+    var totalTokens: Int { input + output }
+}
+
+/// Quota windows for the ClinePass subscription shown on the Cline tab,
+/// fetched live from Cline's own service. The request reuses Cline's
+/// existing sign-in session read-only; this app never refreshes, copies,
+/// or stores the credential.
+enum ClineLimitsReader {
+    struct Limits {
+        var fiveHour: UsageLimit?
+        var weekly: UsageLimit?
+        var monthly: UsageLimit?
+    }
+
+    static func fetch() async throws -> Limits {
+        guard let token = sessionToken() else { return Limits() }
+        var request = URLRequest(url: URL(string: "https://api.cline.bot/api/v1/users/me/plan/usage-limits")!)
+        request.timeoutInterval = 15
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw LimitsError.unreadable("Cline") }
+        switch http.statusCode {
+        case 200: break
+        case 401, 403: throw LimitsError.clineRejected
+        case 429: throw LimitsError.busy("Cline")
+        default: throw LimitsError.server("Cline", http.statusCode)
+        }
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              root["success"] as? Bool == true,
+              let payload = root["data"] as? [String: Any],
+              let limits = payload["limits"] as? [[String: Any]] else { throw LimitsError.unreadable("Cline") }
+
+        var result = Limits()
+        for limit in limits {
+            guard let type = limit["type"] as? String,
+                  let used = (limit["percentUsed"] as? NSNumber)?.doubleValue else { continue }
+            let reset = (limit["resetsAt"] as? String).flatMap(parseTimestamp)
+            switch type {
+            case "five_hour":
+                result.fiveHour = UsageLimit(usedPercent: used, resetsAt: reset, windowMinutes: 300)
+            case "weekly":
+                result.weekly = UsageLimit(usedPercent: used, resetsAt: reset, windowMinutes: 10_080)
+            case "monthly":
+                result.monthly = UsageLimit(usedPercent: used, resetsAt: reset, windowMinutes: 43_200)
+            default:
+                continue
+            }
+        }
+        return result
+    }
+
+    /// The bearer token from Cline's settings file, preferring the `cline`
+    /// entry (shared by ClinePass) and then `cline-pass`. Within an entry the
+    /// order matches Cline's own resolver: `auth.accessToken`, `apiKey`,
+    /// `auth.apiKey`.
+    private static func sessionToken() -> String? {
+        let environment = ProcessInfo.processInfo.environment
+        var candidates: [URL] = []
+        if let path = environment["CLINE_PROVIDER_SETTINGS_PATH"], !path.isEmpty {
+            candidates.append(URL(fileURLWithPath: path))
+        }
+        if let dir = environment["CLINE_DATA_DIR"], !dir.isEmpty {
+            candidates.append(URL(fileURLWithPath: dir).appendingPathComponent("settings/providers.json"))
+        }
+        if let dir = environment["CLINE_DIR"], !dir.isEmpty {
+            candidates.append(URL(fileURLWithPath: dir).appendingPathComponent("data/settings/providers.json"))
+        }
+        candidates.append(FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".cline/data/settings/providers.json"))
+
+        for url in candidates {
+            guard let data = try? Data(contentsOf: url),
+                  let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let providers = root["providers"] as? [String: Any] else { continue }
+            for id in ["cline", "cline-pass"] {
+                guard let settings = (providers[id] as? [String: Any])?["settings"] as? [String: Any] else { continue }
+                let auth = settings["auth"] as? [String: Any]
+                let tokens: [String?] = [
+                    auth?["accessToken"] as? String,
+                    settings["apiKey"] as? String,
+                    auth?["apiKey"] as? String,
+                ]
+                for case let token? in tokens where !token.isEmpty { return token }
+            }
+        }
+        return nil
+    }
+}
+
+/// Quota windows for the OpenCode Go subscription shown on the OpenCode
+/// tab, fetched live from opencode.ai with the API key the OpenCode CLI
+/// already stores locally.
+enum OpenCodeLimitsReader {
+    struct Limits {
+        var fiveHour: UsageLimit?
+        var weekly: UsageLimit?
+        var monthly: UsageLimit?
+    }
+
+    static func fetch() async throws -> Limits {
+        guard let key = apiKey() else { return Limits() }
+        var request = URLRequest(url: URL(string: "https://opencode.ai/zen/go/v1/usage")!)
+        request.timeoutInterval = 15
+        request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw LimitsError.unreadable("OpenCode Go") }
+        switch http.statusCode {
+        case 200: break
+        case 401, 403: throw LimitsError.openCodeRejected
+        case 429: throw LimitsError.busy("OpenCode Go")
+        default: throw LimitsError.server("OpenCode Go", http.statusCode)
+        }
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let usage = root["usage"] as? [String: Any] else { throw LimitsError.unreadable("OpenCode Go") }
+
+        func window(_ name: String, minutes: Int) -> UsageLimit? {
+            guard let item = usage[name] as? [String: Any],
+                  let used = (item["percent"] as? NSNumber)?.doubleValue else { return nil }
+            let reset = (item["resetsAt"] as? String).flatMap(parseTimestamp)
+            return UsageLimit(usedPercent: used, resetsAt: reset, windowMinutes: minutes)
+        }
+
+        return Limits(
+            fiveHour: window("rolling", minutes: 300),
+            weekly: window("weekly", minutes: 10_080),
+            monthly: window("monthly", minutes: 43_200)
+        )
+    }
+
+    /// The `opencode-go` API key from OpenCode's local auth file.
+    private static func apiKey() -> String? {
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".local/share/opencode/auth.json")
+        guard let data = try? Data(contentsOf: url),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let entry = root["opencode-go"] as? [String: Any],
+              let key = entry["key"] as? String, !key.isEmpty else { return nil }
+        return key
+    }
+}
+
+/// Errors surfaced on the Cline and OpenCode tabs when a live quota check
+/// fails. Missing credentials are not errors: the section simply stays
+/// hidden until the tool has a sign-in.
+enum LimitsError: LocalizedError {
+    case clineRejected, openCodeRejected
+    case unreachable(String), busy(String), server(String, Int), unreadable(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .clineRejected: "Cline sign-in was rejected — run `cline auth` in Terminal."
+        case .openCodeRejected: "OpenCode Go key was rejected — run `opencode auth login`."
+        case .unreachable(let name): "Couldn’t reach \(name) to check limits."
+        case .busy(let name): "\(name) is rate limiting the usage check."
+        case .server(let name, let status): "\(name) limit check failed (HTTP \(status))."
+        case .unreadable(let name): "Couldn’t read \(name)’s limit response."
+        }
+    }
+}
+
+/// Parses the ISO-8601 timestamps the limit APIs return, including the
+/// nanosecond-precision fractions Cline sends.
+private func parseTimestamp(_ value: String) -> Date? {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    if let date = formatter.date(from: value) { return date }
+    formatter.formatOptions = [.withInternetDateTime]
+    return formatter.date(from: value)
 }
