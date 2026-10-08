@@ -97,19 +97,48 @@ final class UsageStore: ObservableObject {
     }
 }
 
+private enum AgentTab: Hashable {
+    case codex
+    case openCode
+    case cline
+}
+
 private struct UsageView: View {
     @ObservedObject var store: UsageStore
+    @State private var selectedTab: AgentTab = .codex
+    @FocusState private var keyboardFocus: Bool
 
     var body: some View {
-        TabView {
+        TabView(selection: $selectedTab) {
             CodexTab(store: store)
                 .tabItem { Label("Codex", systemImage: "sparkle") }
+                .tag(AgentTab.codex)
             OpenCodeTab(store: store)
                 .tabItem { Label("OpenCode", systemImage: "chevron.left.forwardslash.chevron.right") }
+                .tag(AgentTab.openCode)
             ClineTab(store: store)
                 .tabItem { Label("Cline", systemImage: "brain") }
+                .tag(AgentTab.cline)
         }
         .frame(minWidth: 440, minHeight: 500)
+        .focusable()
+        .focusEffectDisabled()
+        .focused($keyboardFocus)
+        .defaultFocus($keyboardFocus, true)
+        .onKeyPress { press in
+            switch press.characters {
+            case "1":
+                selectedTab = .codex
+            case "2":
+                selectedTab = .openCode
+            case "3":
+                selectedTab = .cline
+            default:
+                return .ignored
+            }
+            return .handled
+        }
+        .onAppear { keyboardFocus = true }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {

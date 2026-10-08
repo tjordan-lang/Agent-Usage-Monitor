@@ -41,8 +41,8 @@ xcodegen generate   # only if you changed project.yml
 open AgentUsageMonitor.xcodeproj
 ```
 
-Leave it open so the numbers stay fresh — it re-reads everything every
-minute. Needs macOS 26 or later.
+Press `1`, `2`, or `3` to switch tabs, and leave it open so the numbers stay
+fresh — it re-reads everything every minute. Needs macOS 26 or later.
 
 ## If the limit bars stop working
 

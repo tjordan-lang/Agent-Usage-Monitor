@@ -2,7 +2,8 @@
 
 A small window with a tab for each agent — Codex, OpenCode, and Cline. Every
 tab shows tokens used today and all time, an estimated cost, and recent
-sessions, all read from local databases and logs.
+sessions, all read from local databases and logs. Press `1`, `2`, or `3` to
+switch tabs.
 
 The Cline and OpenCode tabs also pull live subscription limits — 5-hour,
 weekly, and monthly — straight from their usage services, using the logins
