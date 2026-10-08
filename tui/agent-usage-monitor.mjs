@@ -289,7 +289,7 @@ function limitLabel(minutes) {
 // ---------------------------------------------------------------------------
 
 function sqlite(db, sql) {
-  return execFileSync("sqlite3", ["-readonly", "-separator", "\t", db, sql], {
+  return execFileSync("sqlite3", ["-readonly", "-separator", "\t", "-cmd", ".timeout 3000", db, sql], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   }).trimEnd();
