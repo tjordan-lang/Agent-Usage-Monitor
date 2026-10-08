@@ -3,11 +3,11 @@ import SwiftUI
 import WidgetKit
 
 @main
-struct CodexUsageApp: App {
+struct AgentUsageMonitorApp: App {
     @StateObject private var store = UsageStore()
 
     var body: some Scene {
-        WindowGroup("Codex Usage") {
+        WindowGroup("Agent Usage Monitor") {
             UsageView(store: store)
         }
         .windowResizability(.contentMinSize)
@@ -45,7 +45,7 @@ final class UsageStore: ObservableObject {
                 try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
                 try JSONEncoder().encode(usage).write(to: url, options: .atomic)
             }
-            ControlCenter.shared.reloadControls(ofKind: "local.tyronejordan.CodexUsageControl.usage")
+            ControlCenter.shared.reloadControls(ofKind: "local.tyronejordan.AgentUsageMonitor.usage")
         } catch {
             self.error = error.localizedDescription
         }

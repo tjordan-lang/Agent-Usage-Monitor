@@ -4,7 +4,7 @@
 <dict>
 	<key>com.apple.security.application-groups</key>
 	<array>
-		<string>group.tyronejordan.codexusage</string>
+		<string>group.tyronejordan.agentusage</string>
 	</array>
 </dict>
 </plist>

@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDevelopmentRegion</key><string>en</string>
-	<key>CFBundleDisplayName</key><string>Codex Usage</string>
+	<key>CFBundleDisplayName</key><string>Agent Usage Monitor</string>
 	<key>CFBundleIconName</key><string>AppIcon</string>
 	<key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
@@ -14,8 +14,8 @@
 	<key>CFBundleVersion</key><string>1</string>
 	<key>CFBundleURLTypes</key>
 	<array><dict>
-		<key>CFBundleURLName</key><string>local.tyronejordan.codexusage</string>
-		<key>CFBundleURLSchemes</key><array><string>codexusage</string></array>
+		<key>CFBundleURLName</key><string>local.tyronejordan.agentusage</string>
+		<key>CFBundleURLSchemes</key><array><string>agentusage</string></array>
 	</dict></array>
 </dict>
 </plist>

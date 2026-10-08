@@ -2,7 +2,7 @@
 
 // Agent Usage Monitor
 // A local, read-only TUI for Codex, OpenCode, and Cline that mirrors the
-// macOS "Codex Usage" app: subscription limit bars with percent left and
+// macOS "Agent Usage Monitor" app: subscription limit bars with percent left and
 // reset countdowns plus clock times, today and all-time token totals,
 // estimated costs, and recent sessions.
 //

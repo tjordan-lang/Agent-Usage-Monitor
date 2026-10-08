@@ -3,4 +3,5 @@ build/
 DerivedData/
 *.xcuserstate
 xcuserdata/
+Agent Usage Monitor.app/
 Codex Usage.app/

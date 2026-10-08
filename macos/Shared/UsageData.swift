@@ -1,6 +1,6 @@
 import Foundation
 
-let usageGroup = "group.tyronejordan.codexusage"
+let usageGroup = "group.tyronejordan.agentusage"
 let usageFile = "usage.json"
 
 struct UsageData: Codable {

@@ -1,10 +1,10 @@
-name: CodexUsageControl
+name: AgentUsageMonitor
 options:
   deploymentTarget:
     macOS: "26.0"
   createIntermediateGroups: true
 targets:
-  CodexUsageControl:
+  AgentUsageMonitor:
     type: application
     platform: macOS
     sources:
@@ -13,19 +13,19 @@ targets:
     resources:
       - App/Assets.xcassets
     dependencies:
-      - target: CodexUsageControlWidget
+      - target: AgentUsageMonitorWidget
         embed: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: local.tyronejordan.CodexUsageControl
-        PRODUCT_NAME: Codex Usage
+        PRODUCT_BUNDLE_IDENTIFIER: local.tyronejordan.AgentUsageMonitor
+        PRODUCT_NAME: Agent Usage Monitor
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SWIFT_VERSION: "6.0"
         MACOSX_DEPLOYMENT_TARGET: "26.0"
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: App/Info.plist
-        CODE_SIGN_ENTITLEMENTS: App/CodexUsageControl.entitlements
-  CodexUsageControlWidget:
+        CODE_SIGN_ENTITLEMENTS: App/AgentUsageMonitor.entitlements
+  AgentUsageMonitorWidget:
     type: app-extension
     platform: macOS
     sources:
@@ -33,10 +33,10 @@ targets:
       - Shared
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: local.tyronejordan.CodexUsageControl.Widget
-        PRODUCT_NAME: CodexUsageControlWidget
+        PRODUCT_BUNDLE_IDENTIFIER: local.tyronejordan.AgentUsageMonitor.Widget
+        PRODUCT_NAME: AgentUsageMonitorWidget
         SWIFT_VERSION: "6.0"
         MACOSX_DEPLOYMENT_TARGET: "26.0"
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Widget/Info.plist
-        CODE_SIGN_ENTITLEMENTS: Widget/CodexUsageControlWidget.entitlements
+        CODE_SIGN_ENTITLEMENTS: Widget/AgentUsageMonitorWidget.entitlements
