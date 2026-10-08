@@ -135,6 +135,16 @@ private struct CodexTab: View {
                 LabeledContent("Active threads") {
                     Text(store.usage.threadCount.formatted()).monospacedDigit()
                 }
+                if let cost = store.usage.estimatedCost {
+                    LabeledContent("Estimated cost today") {
+                        Text((store.usage.todayCost ?? 0).formatted(.currency(code: "USD")))
+                    }
+                    .help("Estimated at current API list prices for the models used")
+                    LabeledContent("Estimated cost all time") {
+                        Text(cost.formatted(.currency(code: "USD")))
+                    }
+                    .help("Estimated at current API list prices for the models used")
+                }
             } header: {
                 Text("Usage")
             } footer: {
@@ -189,6 +199,9 @@ private struct OpenCodeTab: View {
             }
 
             Section {
+                LabeledContent("Tokens used today") {
+                    Text(store.openCode.todayTokens.formatted()).monospacedDigit()
+                }
                 LabeledContent("Total tokens") {
                     Text(store.openCode.totalTokens.formatted()).monospacedDigit()
                 }
@@ -201,6 +214,14 @@ private struct OpenCodeTab: View {
                 LabeledContent("Sessions") {
                     Text(store.openCode.sessionCount.formatted()).monospacedDigit()
                 }
+                LabeledContent("Estimated cost today") {
+                    Text(store.openCode.todayCost.formatted(.currency(code: "USD")))
+                }
+                .help("Cost recorded by OpenCode from per-model API pricing")
+                LabeledContent("Estimated cost all time") {
+                    Text(store.openCode.cost.formatted(.currency(code: "USD")))
+                }
+                .help("Cost recorded by OpenCode from per-model API pricing")
             } header: {
                 Text("Usage")
             } footer: {
@@ -261,6 +282,9 @@ private struct ClineTab: View {
             }
 
             Section {
+                LabeledContent("Tokens used today") {
+                    Text(store.cline.todayTokens.formatted()).monospacedDigit()
+                }
                 LabeledContent("Total tokens") {
                     Text(store.cline.totalTokens.formatted()).monospacedDigit()
                 }
@@ -270,6 +294,14 @@ private struct ClineTab: View {
                 LabeledContent("Output tokens") {
                     Text(store.cline.output.formatted()).monospacedDigit()
                 }
+                LabeledContent("Estimated cost today") {
+                    Text(store.cline.todayCost.formatted(.currency(code: "USD")))
+                }
+                .help("Recorded by Cline where available; other sessions estimated at API list prices")
+                LabeledContent("Estimated cost all time") {
+                    Text(store.cline.cost.formatted(.currency(code: "USD")))
+                }
+                .help("Recorded by Cline where available; other sessions estimated at API list prices")
                 LabeledContent("Sessions") {
                     Text(store.cline.sessionCount.formatted()).monospacedDigit()
                 }

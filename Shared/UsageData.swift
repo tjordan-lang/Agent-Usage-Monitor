@@ -8,6 +8,8 @@ struct UsageData: Codable {
     var todayTokens: Int
     var totalTokens: Int
     var threadCount: Int
+    var estimatedCost: Double? = nil
+    var todayCost: Double? = nil
     var fiveHour: UsageLimit? = nil
     var weekly: UsageLimit? = nil
     var recentThreads: [RecentThread] = []

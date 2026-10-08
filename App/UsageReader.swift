@@ -8,6 +8,8 @@ enum UsageReader {
         let today = try scalar("select coalesce(sum(tokens_used),0) from threads where archived=0 and created_at >= \(Int(midnight));", database)
         let all = try scalar("select coalesce(sum(tokens_used),0) from threads;", database)
         let threads = try scalar("select count(*) from threads where archived=0;", database)
+        let modelTokens = try query("select coalesce(model,''), coalesce(sum(tokens_used),0) from threads group by 1;", database)
+        let todayModelTokens = try query("select coalesce(model,''), coalesce(sum(tokens_used),0) from threads where created_at >= \(Int(midnight)) group by 1;", database)
         let recent = try query("select id, coalesce(tokens_used,0), replace(replace(replace(substr(coalesce(title,''),1,120),char(9),' '),char(10),' '),char(13),' ') from threads where archived=0 order by updated_at desc limit 6;", database)
             .split(separator: "\n")
             .compactMap { line -> RecentThread? in
@@ -25,10 +27,33 @@ enum UsageReader {
             todayTokens: Int(today) ?? 0,
             totalTokens: Int(all) ?? 0,
             threadCount: Int(threads) ?? 0,
+            estimatedCost: codexCost(modelTokens),
+            todayCost: codexCost(todayModelTokens),
             fiveHour: limits.first { $0.windowMinutes == 300 },
             weekly: limits.first { $0.windowMinutes == 10080 },
             recentThreads: recent
         )
+    }
+
+    /// Observed split of Codex usage from rollout token_count events (last 24 h
+    /// of local sessions on 2026-10-06): ~95 % of tokens are cached input,
+    /// which is priced far below fresh input.
+    private static let codexUncachedShare = 0.0440
+    private static let codexCachedShare = 0.9517
+    private static let codexOutputShare = 0.0043
+
+    private static func codexCost(_ modelTokens: String) -> Double {
+        var total = 0.0
+        for line in modelTokens.split(separator: "\n") {
+            let fields = line.split(separator: "\t", omittingEmptySubsequences: false)
+            guard fields.count == 2,
+                  let tokens = Double(fields[1]),
+                  let rates = ModelPricing.rates(for: String(fields[0])) else { continue }
+            total += tokens * (codexUncachedShare * rates.input
+                + codexCachedShare * rates.cachedInput
+                + codexOutputShare * rates.output) / 1_000_000
+        }
+        return total
     }
 
     static func readOpenCode() throws -> OpenCodeUsageData {
@@ -55,8 +80,12 @@ enum UsageReader {
                     cacheWrite: Int(columns[8]) ?? 0
                 )
             }
+        let midnight = Int(Calendar.current.startOfDay(for: .now).timeIntervalSince1970) * 1000
+        let today = try scalar("select coalesce(sum(json_extract(data,'$.tokens.input')),0) + coalesce(sum(json_extract(data,'$.tokens.output')),0) + coalesce(sum(json_extract(data,'$.tokens.reasoning')),0) + coalesce(sum(json_extract(data,'$.tokens.cache.read')),0) + coalesce(sum(json_extract(data,'$.tokens.cache.write')),0) from message where time_created >= \(midnight);", database)
+        let todayCost = try scalar("select coalesce(sum(json_extract(data,'$.cost')),0) from message where time_created >= \(midnight);", database)
         return OpenCodeUsageData(
             updatedAt: .now,
+            todayTokens: Int(today) ?? 0,
             sessionCount: Int(fields[0]) ?? 0,
             input: Int(fields[1]) ?? 0,
             output: Int(fields[2]) ?? 0,
@@ -64,6 +93,7 @@ enum UsageReader {
             cacheRead: Int(fields[4]) ?? 0,
             cacheWrite: Int(fields[5]) ?? 0,
             cost: Double(fields[6]) ?? 0,
+            todayCost: Double(todayCost) ?? 0,
             recentSessions: sessions
         )
     }
@@ -87,6 +117,10 @@ enum UsageReader {
         var output = 0
         var cacheRead = 0
         var cacheWrite = 0
+        var cost = 0.0
+        var todayCost = 0.0
+        var today = 0
+        let midnight = Calendar.current.startOfDay(for: .now)
         for folder in folders {
             guard (try? folder.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true,
                   !folder.lastPathComponent.contains("__agent_"),
@@ -109,6 +143,21 @@ enum UsageReader {
             output += sessionOutput
             cacheRead += sessionCacheRead
             cacheWrite += sessionCacheWrite
+            let recordedCost = usage["totalCost"] as? Double ?? 0
+            let sessionCost: Double
+            if recordedCost > 0 {
+                sessionCost = recordedCost
+            } else if let estimate = ModelPricing.cost(model: sessionModel, input: sessionInput, cachedInput: sessionCacheRead + sessionCacheWrite, output: sessionOutput) {
+                // Sessions covered by cline-pass record no cost; estimate the same usage at list prices.
+                sessionCost = estimate
+            } else {
+                sessionCost = 0
+            }
+            cost += sessionCost
+            if started >= midnight {
+                today += sessionInput + sessionOutput
+                todayCost += sessionCost
+            }
             sessions.append(ClineSession(
                 id: record["session_id"] as? String ?? folder.lastPathComponent,
                 title: clineTitle(metadata["title"]),
@@ -123,11 +172,14 @@ enum UsageReader {
         sessions.sort { $0.startedAt > $1.startedAt }
         return ClineUsageData(
             updatedAt: .now,
+            todayTokens: today,
             sessionCount: sessions.count,
             input: input,
             output: output,
             cacheRead: cacheRead,
             cacheWrite: cacheWrite,
+            cost: cost,
+            todayCost: todayCost,
             recentSessions: Array(sessions.prefix(6))
         )
     }
@@ -231,6 +283,7 @@ enum UsageReader {
 
 struct OpenCodeUsageData {
     var updatedAt: Date
+    var todayTokens: Int
     var sessionCount: Int
     var input: Int
     var output: Int
@@ -238,6 +291,7 @@ struct OpenCodeUsageData {
     var cacheRead: Int
     var cacheWrite: Int
     var cost: Double
+    var todayCost: Double
     var recentSessions: [OpenCodeSession]
     var fiveHour: UsageLimit? = nil
     var weekly: UsageLimit? = nil
@@ -246,7 +300,7 @@ struct OpenCodeUsageData {
 
     var totalTokens: Int { input + output + reasoning + cacheRead + cacheWrite }
     var hasLimits: Bool { fiveHour != nil || weekly != nil || monthly != nil }
-    static let empty = OpenCodeUsageData(updatedAt: .now, sessionCount: 0, input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, cost: 0, recentSessions: [])
+    static let empty = OpenCodeUsageData(updatedAt: .now, todayTokens: 0, sessionCount: 0, input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, cost: 0, todayCost: 0, recentSessions: [])
 }
 
 struct OpenCodeSession: Identifiable {
@@ -265,11 +319,14 @@ struct OpenCodeSession: Identifiable {
 
 struct ClineUsageData {
     var updatedAt: Date
+    var todayTokens: Int
     var sessionCount: Int
     var input: Int
     var output: Int
     var cacheRead: Int
     var cacheWrite: Int
+    var cost: Double
+    var todayCost: Double
     var recentSessions: [ClineSession]
     var fiveHour: UsageLimit? = nil
     var weekly: UsageLimit? = nil
@@ -278,7 +335,7 @@ struct ClineUsageData {
 
     var totalTokens: Int { input + output }
     var hasLimits: Bool { fiveHour != nil || weekly != nil || monthly != nil }
-    static let empty = ClineUsageData(updatedAt: .now, sessionCount: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, recentSessions: [])
+    static let empty = ClineUsageData(updatedAt: .now, todayTokens: 0, sessionCount: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, todayCost: 0, recentSessions: [])
 }
 
 struct ClineSession: Identifiable {
@@ -292,6 +349,68 @@ struct ClineSession: Identifiable {
     var cacheWrite: Int
 
     var totalTokens: Int { input + output }
+}
+
+/// Pay-as-you-go API list prices in USD per 1M tokens, used to estimate the
+/// dollar value of local usage. Sources checked 2026-10-07:
+/// OpenAI (developers.openai.com/api/docs/pricing, standard tier),
+/// DeepSeek (api-docs.deepseek.com, peak-hour rates),
+/// Z.ai (docs.z.ai), Moonshot (platform.kimi.ai).
+enum ModelPricing {
+    struct Rates {
+        let input: Double
+        let cachedInput: Double
+        let output: Double
+    }
+
+    private static let table: [String: Rates] = [
+        // OpenAI
+        "gpt-6-astra": Rates(input: 10.00, cachedInput: 1.00, output: 50.00),
+        "gpt-6.1-sol": Rates(input: 2.00, cachedInput: 0.10, output: 10.00),
+        "gpt-6-luna": Rates(input: 0.10, cachedInput: 0.01, output: 0.50),
+        "gpt-6-sol": Rates(input: 2.00, cachedInput: 0.20, output: 10.00),
+        "gpt-5.6-sol": Rates(input: 4.00, cachedInput: 0.40, output: 20.00),
+        "gpt-5.6-terra": Rates(input: 2.00, cachedInput: 0.20, output: 12.00),
+        "gpt-5.6-luna": Rates(input: 0.20, cachedInput: 0.02, output: 1.20),
+        "gpt-5.5": Rates(input: 5.00, cachedInput: 0.50, output: 30.00),
+        "gpt-5.4": Rates(input: 2.50, cachedInput: 0.25, output: 15.00),
+        "gpt-5.4-mini": Rates(input: 0.75, cachedInput: 0.075, output: 4.50),
+        "gpt-5.2": Rates(input: 1.75, cachedInput: 0.175, output: 14.00),
+        "gpt-5.3-codex": Rates(input: 1.75, cachedInput: 0.175, output: 14.00),
+        // gpt-5.2-codex is not on the public price list; matched to gpt-5.3-codex.
+        "gpt-5.2-codex": Rates(input: 1.75, cachedInput: 0.175, output: 14.00),
+        // Codex background reviewer; priced as the closest public Codex model.
+        "codex-auto-review": Rates(input: 1.75, cachedInput: 0.175, output: 14.00),
+        // DeepSeek
+        "deepseek-flash": Rates(input: 0.30, cachedInput: 0.006, output: 1.20),
+        "deepseek-v4.1-flash": Rates(input: 0.30, cachedInput: 0.006, output: 1.20),
+        "deepseek-v4-flash": Rates(input: 0.30, cachedInput: 0.006, output: 1.20),
+        "deepseek-v4-pro": Rates(input: 1.32, cachedInput: 0.044, output: 3.96),
+        // Z.ai
+        "glm-5.3-flash": Rates(input: 0.15, cachedInput: 0.03, output: 0.50),
+        "glm-5.3": Rates(input: 1.40, cachedInput: 0.26, output: 4.40),
+        "glm-5.2": Rates(input: 1.40, cachedInput: 0.26, output: 4.40),
+        "glm-5.1": Rates(input: 1.40, cachedInput: 0.26, output: 4.40),
+        // Moonshot (cache-hit price fitted from local usage records)
+        "kimi-k3": Rates(input: 3.00, cachedInput: 0.30, output: 15.00),
+    ]
+
+    /// Rates for a model id, ignoring any provider prefix ("cline-pass/glm-5.2" → "glm-5.2").
+    static func rates(for model: String) -> Rates? {
+        let name = (model.lowercased().split(separator: "/").last.map { String($0) } ?? "")
+            .trimmingCharacters(in: .whitespaces)
+        return table[name]
+    }
+
+    /// Estimated USD cost for a token count at list prices, or nil for unpriced models.
+    /// `cachedInput` must be a subset of `input`, as in Cline's accounting.
+    static func cost(model: String, input: Int, cachedInput: Int, output: Int) -> Double? {
+        guard let rates = rates(for: model) else { return nil }
+        let uncached = max(0, input - cachedInput)
+        return (Double(uncached) * rates.input
+            + Double(cachedInput) * rates.cachedInput
+            + Double(output) * rates.output) / 1_000_000
+    }
 }
 
 /// Quota windows for the ClinePass subscription shown on the Cline tab,
