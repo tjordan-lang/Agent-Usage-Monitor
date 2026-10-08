@@ -1,0 +1,42 @@
+name: CodexUsageControl
+options:
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+targets:
+  CodexUsageControl:
+    type: application
+    platform: macOS
+    sources:
+      - App
+      - Shared
+    resources:
+      - App/Assets.xcassets
+    dependencies:
+      - target: CodexUsageControlWidget
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: local.tyronejordan.CodexUsageControl
+        PRODUCT_NAME: Codex Usage
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_VERSION: "6.0"
+        MACOSX_DEPLOYMENT_TARGET: "26.0"
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: App/CodexUsageControl.entitlements
+  CodexUsageControlWidget:
+    type: app-extension
+    platform: macOS
+    sources:
+      - Widget
+      - Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: local.tyronejordan.CodexUsageControl.Widget
+        PRODUCT_NAME: CodexUsageControlWidget
+        SWIFT_VERSION: "6.0"
+        MACOSX_DEPLOYMENT_TARGET: "26.0"
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Widget/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Widget/CodexUsageControlWidget.entitlements
